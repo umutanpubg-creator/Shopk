@@ -6,17 +6,13 @@ bot = TeleBot(TOKEN)
 ADMINS = [7279061074]
 REQUIRED_CHANNELS = ["@example_channel1"]
 
-# basit veritabanı
 users = {}
-
 REF_BONUS = 5
 
 # -------- START --------
 @bot.message_handler(commands=['start'])
 def start(message):
     uid = message.from_user.id
-
-    # referal
     ref = None
     args = message.text.split()
     if len(args) > 1:
@@ -27,7 +23,6 @@ def start(message):
 
     if uid not in users:
         users[uid] = {"balance": 0, "ref": ref, "invited": 0}
-
         if ref and ref != uid and ref in users:
             users[ref]["balance"] += REF_BONUS
             users[ref]["invited"] += 1
@@ -44,6 +39,8 @@ def menu(message):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("⭐ Kazan", "👤 Profil")
     kb.add("🤝 Referal")
+    if message.from_user.id in ADMINS:
+        kb.add("/panel")
     bot.send_message(message.chat.id, "Menü:", reply_markup=kb)
 
 # -------- KANAL --------
@@ -98,17 +95,84 @@ def referal(message):
     link = f"https://t.me/{bot.get_me().username}?start={uid}"
     bot.send_message(message.chat.id, f"Linkin:\n{link}")
 
-# -------- ADMIN --------
-@bot.message_handler(commands=['add'])
-def add(message):
+# -------- ADMIN PANEL --------
+@bot.message_handler(commands=['panel'])
+def panel(message):
     if message.from_user.id not in ADMINS:
+        bot.send_message(message.chat.id, "Yetkin yok!")
         return
+
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton("⭐ Bakiye Ver", callback_data="panel_balance"),
+        types.InlineKeyboardButton("➕ Kanal Ekle", callback_data="panel_add_channel"),
+        types.InlineKeyboardButton("➖ Kanal Sil", callback_data="panel_remove_channel"),
+        types.InlineKeyboardButton("👑 Admin Ekle", callback_data="panel_add_admin"),
+        types.InlineKeyboardButton("📊 Kullanıcı Listesi", callback_data="panel_users")
+    )
+    bot.send_message(message.chat.id, "👑 Admin Paneli", reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("panel_"))
+def panel_callback(call):
+    data = call.data
+
+    if data == "panel_balance":
+        msg = bot.send_message(call.message.chat.id, "Kullanıcı ID ve miktarı yaz (örn: 123456 10)")
+        bot.register_next_step_handler(msg, add_balance)
+
+    elif data == "panel_add_channel":
+        msg = bot.send_message(call.message.chat.id, "Eklemek istediğin kanalı yaz (@kanal)")
+        bot.register_next_step_handler(msg, add_channel)
+
+    elif data == "panel_remove_channel":
+        msg = bot.send_message(call.message.chat.id, "Silmek istediğin kanalı yaz (@kanal)")
+        bot.register_next_step_handler(msg, remove_channel)
+
+    elif data == "panel_add_admin":
+        msg = bot.send_message(call.message.chat.id, "Yeni adminin ID'sini yaz")
+        bot.register_next_step_handler(msg, add_admin)
+
+    elif data == "panel_users":
+        text = "👥 Kullanıcı Listesi:\n"
+        for uid, info in users.items():
+            text += f"{uid} - ⭐ {info['balance']} - Referal: {info['invited']}\n"
+        bot.send_message(call.message.chat.id, text)
+
+# -------- PANEL FONKSIYONLARI --------
+def add_balance(message):
     try:
-        uid, amt = map(int, message.text.split()[1:])
+        uid, amt = map(int, message.text.split())
         users[uid]["balance"] += amt
-        bot.send_message(message.chat.id, "Eklendi")
+        bot.send_message(message.chat.id, f"{amt}⭐ {uid} kullanıcısına eklendi.")
     except:
-        bot.send_message(message.chat.id, "Hata")
+        bot.send_message(message.chat.id, "Hata! Örn: 123456 10")
+
+def add_channel(message):
+    ch = message.text.strip()
+    if ch not in REQUIRED_CHANNELS:
+        REQUIRED_CHANNELS.append(ch)
+        bot.send_message(message.chat.id, f"{ch} kanalı eklendi.")
+    else:
+        bot.send_message(message.chat.id, "Zaten mevcut.")
+
+def remove_channel(message):
+    ch = message.text.strip()
+    if ch in REQUIRED_CHANNELS:
+        REQUIRED_CHANNELS.remove(ch)
+        bot.send_message(message.chat.id, f"{ch} kanalı silindi.")
+    else:
+        bot.send_message(message.chat.id, "Böyle bir kanal yok.")
+
+def add_admin(message):
+    try:
+        new_admin = int(message.text.strip())
+        if new_admin not in ADMINS:
+            ADMINS.append(new_admin)
+            bot.send_message(message.chat.id, f"{new_admin} artık admin!")
+        else:
+            bot.send_message(message.chat.id, "Zaten admin.")
+    except:
+        bot.send_message(message.chat.id, "Geçerli bir ID gir.")
 
 # -------- RUN --------
 bot.infinity_polling()
